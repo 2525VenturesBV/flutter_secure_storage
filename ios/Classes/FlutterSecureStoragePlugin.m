@@ -13,17 +13,6 @@ static NSString *const InvalidParameters = @"Invalid parameter's type";
 
 @implementation FlutterSecureStoragePlugin
 
-- (instancetype)init {
-    self = [super init];
-    if (self){
-        self.query = @{
-                       (__bridge id)kSecClass :(__bridge id)kSecClassGenericPassword,
-                       (__bridge id)kSecAttrService :KEYCHAIN_SERVICE,
-                       };
-    }
-    return self;
-}
-
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
     FlutterMethodChannel* channel = [FlutterMethodChannel
                                      methodChannelWithName:CHANNEL_NAME
@@ -35,53 +24,56 @@ static NSString *const InvalidParameters = @"Invalid parameter's type";
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
     NSDictionary *arguments = [call arguments];
     NSDictionary *options = [arguments[@"options"] isKindOfClass:[NSDictionary class]] ? arguments[@"options"] : nil;
+    NSString *key = arguments[@"key"];
 
     if ([@"read" isEqualToString:call.method]) {
-        NSString *key = arguments[@"key"];
-        NSString *groupId = options[@"groupId"];
-        NSString *value = [self read:key forGroup:groupId];
-        
-        result(value);
+        result([self read:key withOptions:options]);
     } else
     if ([@"write" isEqualToString:call.method]) {
-        NSString *key = arguments[@"key"];
         NSString *value = arguments[@"value"];
-        NSString *groupId = options[@"groupId"];
-        if (![value isKindOfClass:[NSString class]]){
+        if (![value isKindOfClass:[NSString class]]) {
             result(InvalidParameters);
             return;
         }
-        
-        [self write:value forKey:key forGroup:groupId];
-        
+        [self write:value forKey:key withOptions:options];
         result(nil);
     } else if ([@"delete" isEqualToString:call.method]) {
-        NSString *key = arguments[@"key"];
-        NSString *groupId = options[@"groupId"];
-        [self delete:key forGroup:groupId];
-        
+        [self delete:key withOptions:options];
         result(nil);
     } else if ([@"deleteAll" isEqualToString:call.method]) {
-        NSString *groupId = options[@"groupId"];
-        [self deleteAll: groupId];
-        
+        [self deleteAll:options];
         result(nil);
     } else if ([@"readAll" isEqualToString:call.method]) {
-        NSString *groupId = options[@"groupId"];
-        NSDictionary *value = [self readAll: groupId];
-
-        result(value);
-    }else {
+        result([self readAll:options]);
+    } else {
         result(FlutterMethodNotImplemented);
     }
 }
 
-- (void)write:(NSString *)value forKey:(NSString *)key forGroup:(NSString *)groupId {
-    NSMutableDictionary *search = [self.query mutableCopy];
-    if(groupId != nil) {
-        search[(__bridge id)kSecAttrAccessGroup] = groupId;
+- (NSMutableDictionary *)_queryWithKey:(NSString *)key withOptions:(NSDictionary *)options {
+    NSMutableDictionary *query = [self _query:options];
+    query[(__bridge id)kSecAttrAccount] = [key dataUsingEncoding:NSUTF8StringEncoding];
+
+    return query;
+}
+
+- (NSMutableDictionary *)_query:(NSDictionary *)options {
+    NSString *service = (NSString *) options[@"keychainService"] ? : KEYCHAIN_SERVICE;
+    NSMutableDictionary *query = [@{
+                                    (__bridge id)kSecClass:(__bridge id)kSecClassGenericPassword,
+                                    (__bridge id)kSecAttrService:service,
+                                    } mutableCopy];
+
+    NSString *groupId = options[@"groupId"];
+    if (groupId != (id)[NSNull null] && [groupId length] > 0) {
+        query[(__bridge id)kSecAttrAccessGroup] = groupId;
     }
-    search[(__bridge id)kSecAttrAccount] = key;
+
+    return query;
+}
+
+- (void)write:(NSString *)value forKey:(NSString *)key withOptions:(NSDictionary *)options {
+    NSMutableDictionary *search = [self _queryWithKey:key withOptions:options];
     search[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
     
     OSStatus status;
@@ -106,12 +98,8 @@ static NSString *const InvalidParameters = @"Invalid parameter's type";
     }
 }
 
-- (NSString *)read:(NSString *)key forGroup:(NSString *)groupId {
-    NSMutableDictionary *search = [self.query mutableCopy];
-    if(groupId != nil) {
-     search[(__bridge id)kSecAttrAccessGroup] = groupId;
-    }
-    search[(__bridge id)kSecAttrAccount] = key;
+- (NSString *)read:(NSString *)key withOptions:(NSDictionary *)options {
+    NSMutableDictionary *search = [self _queryWithKey:key withOptions:options];
     search[(__bridge id)kSecReturnData] = (__bridge id)kCFBooleanTrue;
     
     CFDataRef resultData = NULL;
@@ -127,31 +115,21 @@ static NSString *const InvalidParameters = @"Invalid parameter's type";
     return value;
 }
 
-- (void)delete:(NSString *)key forGroup:(NSString *)groupId {
-    NSMutableDictionary *search = [self.query mutableCopy];
-    if(groupId != nil) {
-        search[(__bridge id)kSecAttrAccessGroup] = groupId;
-    }
-    search[(__bridge id)kSecAttrAccount] = key;
+- (void)delete:(NSString *)key withOptions:(NSDictionary *)options {
+    NSMutableDictionary *search = [self _queryWithKey:key withOptions:options];
     search[(__bridge id)kSecReturnData] = (__bridge id)kCFBooleanTrue;
     
     SecItemDelete((__bridge CFDictionaryRef)search);
 }
 
-- (void)deleteAll:(NSString *)groupId {
-    NSMutableDictionary *search = [self.query mutableCopy];
-    if(groupId != nil) {
-        search[(__bridge id)kSecAttrAccessGroup] = groupId;
-    }
+- (void)deleteAll:(NSDictionary *)options {
+    NSMutableDictionary *search = [self _query:options];
     SecItemDelete((__bridge CFDictionaryRef)search);
 }
 
-- (NSDictionary *)readAll:(NSString *)groupId {
-    NSMutableDictionary *search = [self.query mutableCopy];
-    if(groupId != nil) {
-        search[(__bridge id)kSecAttrAccessGroup] = groupId;
-    }
-    
+- (NSDictionary *)readAll:(NSDictionary *)options {
+    NSMutableDictionary *search = [self _query:options];
+
     search[(__bridge id)kSecReturnData] = (__bridge id)kCFBooleanTrue;
 
     search[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitAll;

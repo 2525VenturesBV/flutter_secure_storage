@@ -72,13 +72,19 @@ abstract class Options {
 }
 
 class IOSOptions extends Options {
-  IOSOptions({String groupId}) : _groupId = groupId;
+  IOSOptions({String groupId, String keychainService})
+      : _groupId = groupId,
+        _keychainService = keychainService;
 
   final String _groupId;
+  final String _keychainService;
 
   @override
   Map<String, String> _toMap() {
-    return <String, String>{'groupId': _groupId};
+    return <String, String>{
+      'groupId': _groupId,
+      'keychainService': _keychainService
+    };
   }
 }
 
