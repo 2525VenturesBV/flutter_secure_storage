@@ -58,7 +58,11 @@ static NSString *const InvalidParameters = @"Invalid parameter's type";
 }
 
 - (NSMutableDictionary *)_query:(NSDictionary *)options {
-    NSString *service = (NSString *) options[@"keychainService"] ? : KEYCHAIN_SERVICE;
+    NSString *service = KEYCHAIN_SERVICE;
+    NSString *serviceOption = options[@"keychainService"];
+    if (serviceOption != (id)[NSNull null] && [serviceOption length] > 0) {
+        service = serviceOption;
+    }
     NSMutableDictionary *query = [@{
                                     (__bridge id)kSecClass:(__bridge id)kSecClassGenericPassword,
                                     (__bridge id)kSecAttrService:service,
@@ -87,7 +91,7 @@ static NSString *const InvalidParameters = @"Invalid parameter's type";
         if (status != noErr){
             NSLog(@"SecItemUpdate status = %d", (int) status);
         }
-    }else{
+    } else {
         search[(__bridge id)kSecValueData] = [value dataUsingEncoding:NSUTF8StringEncoding];
         search[(__bridge id)kSecMatchLimit] = nil;
         
@@ -110,6 +114,8 @@ static NSString *const InvalidParameters = @"Invalid parameter's type";
     if (status == noErr){
         NSData *data = (__bridge NSData*)resultData;
         value = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    } else {
+        NSLog(@"read status = %d", (int) status);
     }
     
     return value;
